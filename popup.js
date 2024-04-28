@@ -93,7 +93,7 @@ function init() {
 
             // AJAX 
             $.ajax({
-                url: "https://ck.010199.xyz/ck.php",  // 指定请求发送到的后端服务器地址
+                url: "https://xxxx/ck.php",  // 指定请求发送到的后端服务器地址
                 type: 'post',
                 data: JSON.stringify({
                     url: URL,
