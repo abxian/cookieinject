@@ -5,7 +5,6 @@ header('Content-Type: application/json');
 
 $postData = file_get_contents("php://input");
 $data = json_decode($postData, true);
-
 $url = $data['url'];
 $encodedCookies = $data['cookies'];
 $token = $data['token'];
